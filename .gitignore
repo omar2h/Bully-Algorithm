@@ -1,1 +1,4 @@
 .venv
+app.spec
+build
+dist/app

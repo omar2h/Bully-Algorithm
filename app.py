@@ -1,8 +1,6 @@
 from threading import Thread, Lock, active_count
 import zmq
 import time
-import sys
-import random
 
 TIMEOUT = 5000
 PORT = 9090
@@ -33,7 +31,8 @@ class Node:
         time.sleep(1)
 
         if self.startElection:
-            print(f"Process {self.pid} publish election message")
+            print(f"Process {self.pid} multicast election message")
+            time.sleep(0.1)
             self.publishSocket.send_string(f"ELECTION:{self.pid}:-1")
         
         listenThread.join()
@@ -44,8 +43,10 @@ class Node:
         self.subscribeSocket.subscribe("ELECTION")
         self.subscribeSocket.subscribe("OK")
 
+        # all ports except self
         ports = [PORT + i for i in range(self.numberOfNodes) if i != self.pid]
 
+        # subscribe to all ports except self
         for port in ports:
             self.subscribeSocket.connect(f"tcp://127.0.0.1:{port}")
 
@@ -73,8 +74,8 @@ class Node:
                         self.publishSocket.send_string(f"OK:{self.pid}:{senderId}")
                         if not self.startElection:
                             self.startElection = True
+                            print(f"Process {self.pid} multicast election message")
                             time.sleep(0.1)
-                            print(f"Process {self.pid} publish election message")
                             self.publishSocket.send_string(f"ELECTION:{self.pid}:{senderId}")
                 elif content == "OK":
                     if toId == self.pid:
@@ -92,22 +93,38 @@ class Node:
         # unlock the state
         self.lock.release()
 
-def main(args):
-    numberProcesses = int(args[1])
-    numberStart = int(args[2])
-    
+def main():
+    while True:
+        try:
+            startingIds = []
+            numProcesses = int(input("Enter number of processes: "))
+            print("Processes: ", end=" ")
+            for i in range(numProcesses):
+                print(i, end=" ")
+            print()
+            numStarting = int(input("Enter number of nodes calling for election: "))
+            if numStarting > numProcesses:
+                raise Exception("Please Enter number less than total number of Processes")
+            print(f"\nEnter ids calling for election (range(0, {numProcesses})) : ")
+            for i in range(numStarting):
+                ele = int(input())
+                if ele not in range(numProcesses):
+                    raise Exception("Index out of range") 
+                startingIds.append(ele)
+        except Exception as e:
+            print(e)
+            continue
+        break
+
     lock = Lock()
     nodes = []
     threads = []
 
-    pids = [i for i in range(numberProcesses)]
-    idsStart = random.sample(pids, numberStart)
-
-    for i in range(numberProcesses):
-        node = Node(i, PORT+i, False, numberProcesses, lock)
+    for i in range(numProcesses):
+        node = Node(i, PORT+i, False, numProcesses, lock)
         nodes.append(node)
 
-    for id in idsStart:
+    for id in startingIds:
         nodes[id].startElection = True
 
     for node in nodes:
@@ -119,9 +136,7 @@ def main(args):
 
     for t in threads:
         t.join()
+    input()
     
 if __name__ == "__main__":
-    if len(sys.argv) != 3:
-        print("Invalid command line arguments!")
-    else:
-        main(args=sys.argv)
+    main()
